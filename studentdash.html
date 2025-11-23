@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Student Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="studentdash.css" />
+</head>
+<body>
+  <!-- Top Navbar -->
+  <header class="top-nav">
+    <div class="brand">College DBMS • Student Dashboard</div>
+    <div class="nav-right">
+      <div class="user">Logged in as: <strong>student@example.edu</strong></div>
+      <button id="logout-btn" class="btn-logout">Logout</button>
+    </div>
+  </header>
+
+  <main class="page">
+    <!-- Student Profile / My Info -->
+    <section class="card" id="my-info">
+      <h2>My Profile</h2>
+      <div class="info-grid">
+        <div class="info-item">
+          <label>Name</label>
+          <span id="student-name" class="placeholder-text">Loading...</span>
+        </div>
+        <div class="info-item">
+          <label>Major</label>
+          <span id="student-major" class="placeholder-text">Loading...</span>
+        </div>
+        <div class="info-item">
+          <label>Cumulative GPA</label>
+          <span id="student-gpa" class="placeholder-text">Loading...</span>
+        </div>
+        <div class="info-item">
+          <label>Advisor</label>
+          <span id="student-advisor" class="placeholder-text">Loading...</span>
+        </div>
+      </div>
+      <p class="tiny-text">
+        * This section will automatically populate once the backend connection is established.
+      </p>
+    </section>
+
+    <!-- Enrolled Courses / CRUD -->
+    <section class="card" id="my-courses">
+      <h2>My Enrolled Sections</h2>
+
+      <!-- CREATE: Add new enrollment -->
+      <form id="enroll-form" class="enroll-form">
+        <div class="form-field">
+          <label for="course_code">Course Code</label>
+          <input
+            type="text"
+            id="course_code"
+            name="course_code"
+            placeholder="e.g., MATH 164"
+            required
+          />
+        </div>
+        <div class="form-field">
+          <label for="course_title">Course Title</label>
+          <input
+            type="text"
+            id="course_title"
+            name="course_title"
+            placeholder="e.g., Calculus I"
+            required
+          />
+        </div>
+        <div class="form-field">
+          <label for="section_number">Section</label>
+          <input
+            type="number"
+            id="section_number"
+            name="section_number"
+            placeholder="e.g., 001"
+            required
+          />
+        </div>
+        <div class="form-field">
+          <label for="term_name">Term</label>
+          <input
+            type="text"
+            id="term_name"
+            name="term_name"
+            placeholder="e.g., Fall 2025"
+            required
+          />
+        </div>
+        <div class="form-field">
+          <label for="instr_name">Instructor</label>
+          <input
+            type="text"
+            id="instr_name"
+            name="instr_name"
+            placeholder="e.g., Jane Smith"
+          />
+        </div>
+        <div class="form-field">
+          <label for="capacity">Capacity</label>
+          <input
+            type="number"
+            id="capacity"
+            name="capacity"
+            placeholder="e.g., 35"
+          />
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">
+            Add Enrollment
+          </button>
+        </div>
+      </form>
+
+      <!-- SEARCH: filter local data -->
+      <div class="search-row">
+        <input
+          type="text"
+          id="courseSearch"
+          placeholder="Search enrolled courses (e.g., MATH 164, Fall 2025)"
+        />
+        <button type="button" id="courseSearchBtn" class="btn btn-outline">
+          Search
+        </button>
+      </div>
+
+      <!-- READ: results container -->
+      <div id="course-results" class="results-wrapper" style="display: none;">
+        <p id="course-count" class="tiny-text"></p>
+        <div class="table-wrapper">
+          <table id="course-table">
+            <thead>
+              <tr>
+                <th>Course Code</th>
+                <th>Title</th>
+                <th>Section</th>
+                <th>Term</th>
+                <th>Instructor</th>
+                <th>Capacity</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- rows added by JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- message area for “no results” -->
+      <p id="course-empty" class="tiny-text" style="display: none;">
+        No matching courses found. Try “MATH 164” or “Fall 2025”.
+      </p>
+    </section>
+  </main>
+
+  <!-- Script for Logout and CRUD logic -->
+  <script>
+    // Adjust this to match your Flask / backend API base
+    const API_BASE = "http://127.0.0.1:5000";
+
+    // ---------------------------
+    // 1) Logout
+    // ---------------------------
+    const logoutBtn = document.getElementById("logout-btn");
+    if (logoutBtn) {
+      logoutBtn.addEventListener("click", () => {
+        const confirmLogout = confirm("Are you sure you want to log out?");
+        if (confirmLogout) {
+          window.location.href = "LoginPage.html";
+        }
+      });
+    }
+
+    // ---------------------------
+    // 2) Load student profile (READ)
+    // ---------------------------
+    fetch(\`\${API_BASE}/api/student/me\`)
+      .then((res) => res.json())
+      .then((data) => {
+        document.getElementById("student-name").textContent =
+          data.fname && data.lname ? \`\${data.fname} \${data.lname}\` : "N/A";
+        document.getElementById("student-major").textContent =
+          data.major ?? "N/A";
+        document.getElementById("student-gpa").textContent =
+          data.gpa ?? "N/A";
+        document.getElementById("student-advisor").textContent =
+          data.advisor_name ?? "N/A";
+      })
+      .catch((err) => console.error("Failed to load student profile:", err));
+
+    // ---------------------------
+    // 3) Enrolled courses CRUD
+    // ---------------------------
+    let allCourses = []; // local cache for READ / SEARCH / UPDATE / DELETE
+
+    const searchInput = document.getElementById("courseSearch");
+    const searchBtn = document.getElementById("courseSearchBtn");
+    const resultsWrapper = document.getElementById("course-results");
+    const emptyMsg = document.getElementById("course-empty");
+    const tableBody = document.querySelector("#course-table tbody");
+    const courseCount = document.getElementById("course-count");
+    const enrollForm = document.getElementById("enroll-form");
+
+    // ---- READ: load all enrollments from backend on page load
+    function loadCourses() {
+      fetch(\`\${API_BASE}/api/student/courses\`)
+        .then((res) => res.json())
+        .then((courses) => {
+          allCourses = Array.isArray(courses) ? courses : [];
+          renderCourses(allCourses);
+        })
+        .catch((err) => {
+          console.error("Failed to load courses:", err);
+          allCourses = [];
+          renderCourses([]);
+        });
+    }
+
+    // ---- RENDER helper
+    function renderCourses(list) {
+      tableBody.innerHTML = "";
+
+      if (!list.length) {
+        resultsWrapper.style.display = "none";
+        emptyMsg.style.display = "block";
+        courseCount.textContent = "";
+        return;
+      }
+
+      list.forEach((c) => {
+        // assuming backend returns an "id" or "enrollment_id" for CRUD
+        const courseId = c.id ?? c.enrollment_id;
+
+        const tr = document.createElement("tr");
+        tr.innerHTML = \`
+          <td>\${c.course_code ?? ""}</td>
+          <td>\${c.course_title ?? ""}</td>
+          <td>\${c.section_number ?? ""}</td>
+          <td>\${c.term_name ?? ""}</td>
+          <td>\${
+            c.instr_fname || c.instr_lname
+              ? (c.instr_fname || "") + " " + (c.instr_lname || "")
+              : c.instructor_name || "TBA"
+          }</td>
+          <td>\${c.capacity ?? ""}</td>
+          <td class="table-actions">
+            <button class="btn btn-sm btn-outline" data-action="edit" data-id="\${courseId}">Edit</button>
+            <button class="btn btn-sm btn-danger" data-action="delete" data-id="\${courseId}">Delete</button>
+          </td>
+        \`;
+
+        tableBody.appendChild(tr);
+      });
+
+      courseCount.textContent = \`\${list.length} enrollment(s)\`;
+      emptyMsg.style.display = "none";
+      resultsWrapper.style.display = "block";
+    }
+
+    // ---- SEARCH (client-side filter)
+    function handleSearch() {
+      const q = (searchInput.value || "").toLowerCase().trim();
+
+      if (!q) {
+        // show all if query is cleared
+        renderCourses(allCourses);
+        return;
+      }
+
+      const filtered = allCourses.filter((c) => {
+        return (
+          (c.course_code && c.course_code.toLowerCase().includes(q)) ||
+          (c.course_title && c.course_title.toLowerCase().includes(q)) ||
+          (c.term_name && c.term_name.toLowerCase().includes(q)) ||
+          (c.section_number && c.section_number.toString().includes(q))
+        );
+      });
+
+      renderCourses(filtered);
+    }
+
+    searchBtn.addEventListener("click", handleSearch);
+    searchInput.addEventListener("keyup", (e) => {
+      if (e.key === "Enter") handleSearch();
+    });
+
+    // ---- CREATE: handle Add Enrollment form submit
+    enrollForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+
+      const formData = new FormData(enrollForm);
+      const body = {
+        course_code: formData.get("course_code"),
+        course_title: formData.get("course_title"),
+        section_number: Number(formData.get("section_number")),
+        term_name: formData.get("term_name"),
+        capacity: formData.get("capacity")
+          ? Number(formData.get("capacity"))
+          : null,
+      };
+
+      // split instructor field into first/last name if user typed both
+      const instrName = formData.get("instr_name") || "";
+      if (instrName.trim()) {
+        const parts = instrName.trim().split(" ");
+        body.instr_fname = parts[0];
+        body.instr_lname = parts.slice(1).join(" ") || null;
+      }
+
+      fetch(\`\${API_BASE}/api/student/courses\`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+        .then((res) => {
+          if (!res.ok) {
+            throw new Error("Failed to add enrollment");
+          }
+          return res.json();
+        })
+        .then((created) => {
+          // push newly created record into local list and re-render
+          allCourses.push(created);
+          renderCourses(allCourses);
+          enrollForm.reset();
+        })
+        .catch((err) => {
+          console.error(err);
+          alert("Could not add enrollment. Please try again.");
+        });
+    });
+
+    // ---- UPDATE & DELETE: event delegation on table body
+    tableBody.addEventListener("click", (e) => {
+      const btn = e.target.closest("button");
+      if (!btn) return;
+
+      const action = btn.getAttribute("data-action");
+      const id = btn.getAttribute("data-id");
+      if (!id) {
+        alert("Missing enrollment id from backend.");
+        return;
+      }
+
+      if (action === "delete") {
+        handleDelete(id);
+      } else if (action === "edit") {
+        handleEdit(id);
+      }
+    });
+
+    // ---- DELETE
+    function handleDelete(id) {
+      const confirmDelete = confirm(
+        "Are you sure you want to drop this enrollment?"
+      );
+      if (!confirmDelete) return;
+
+      fetch(\`\${API_BASE}/api/student/courses/\${id}\`, {
+        method: "DELETE",
+      })
+        .then((res) => {
+          if (!res.ok) {
+            throw new Error("Failed to delete enrollment");
+          }
+        })
+        .then(() => {
+          allCourses = allCourses.filter((c) => (c.id ?? c.enrollment_id) != id);
+          renderCourses(allCourses);
+        })
+        .catch((err) => {
+          console.error(err);
+          alert("Could not delete enrollment. Please try again.");
+        });
+    }
+
+    // ---- UPDATE (simple prompt-based editing)
+    function handleEdit(id) {
+      // find the course in local cache
+      const course = allCourses.find((c) => (c.id ?? c.enrollment_id) == id);
+      if (!course) {
+        alert("Could not find this enrollment in local data.");
+        return;
+      }
+
+      const newSection = prompt(
+        "Update section number:",
+        course.section_number ?? ""
+      );
+      if (newSection === null) {
+        // user cancelled
+        return;
+      }
+
+      const newTerm = prompt("Update term name:", course.term_name ?? "");
+      if (newTerm === null) return;
+
+      const payload = {
+        ...course,
+        section_number: newSection ? Number(newSection) : course.section_number,
+        term_name: newTerm || course.term_name,
+      };
+
+      fetch(\`\${API_BASE}/api/student/courses/\${id}\`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+        .then((res) => {
+          if (!res.ok) {
+            throw new Error("Failed to update enrollment");
+          }
+          return res.json();
+        })
+        .then((updated) => {
+          // replace in local cache
+          allCourses = allCourses.map((c) =>
+            (c.id ?? c.enrollment_id) == id ? updated : c
+          );
+          renderCourses(allCourses);
+        })
+        .catch((err) => {
+          console.error(err);
+          alert("Could not update enrollment. Please try again.");
+        });
+    }
+
+    // initial load
+    loadCourses();
+  </script>
+</body>
+</html>
