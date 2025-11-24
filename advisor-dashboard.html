@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Advisor Dashboard</title>
+  <link rel="stylesheet" href="advisor-dashboard.css" />
+</head>
+<body>
+  <div class="page-shell">
+    <header class="topbar">
+      <div class="topbar-left">
+        <h1 class="app-title">Advisor Dashboard</h1>
+        <p class="app-subtitle">Welcome, Advisor</p>
+      </div>
+      <button class="btn-secondary" id="logout-btn">Logout</button>
+    </header>
+
+    <main class="main-area">
+
+      <!-- CREATE STUDENT FORM -->
+      <section class="card create-card">
+        <h2>Add New Student</h2>
+        <form id="create-form" class="search-form">
+          <div>
+            <label class="form-label">First Name</label>
+            <input type="text" id="create-fname" class="input" required>
+          </div>
+          <div>
+            <label class="form-label">Last Name</label>
+            <input type="text" id="create-lname" class="input" required>
+          </div>
+          <div>
+            <label class="form-label">Major</label>
+            <input type="text" id="create-major" class="input">
+          </div>
+          <div>
+            <label class="form-label">GPA</label>
+            <input type="number" step="0.01" id="create-gpa" class="input">
+          </div>
+          <button class="btn-primary">Create Student</button>
+        </form>
+      </section>
+
+      <section class="card search-card">
+        <h2>Student Lookup</h2>
+        <p class="card-text">Search by Student ID, name, or major.</p>
+
+        <form id="search-form" class="search-form">
+          <label for="searchInput" class="form-label">Search</label>
+          <input
+            type="text"
+            id="searchInput"
+            name="search"
+            placeholder="e.g. 2025001 or Alice or Computer Science"
+            class="input"
+            autocomplete="off"
+          />
+          <button type="submit" class="btn-primary">Search</button>
+        </form>
+
+      </section>
+
+      <section class="card results-card" id="results-card" style="display:none;">
+        <div class="results-header">
+          <h2>Search Results</h2>
+          <p id="results-count" class="muted"></p>
+        </div>
+        <ul id="results-list" class="results-list"></ul>
+      </section>
+
+      <section class="card queries-card">
+        <h2>Advisor Quick Queries</h2>
+        <p class="card-text">Run common reports.</p>
+        <div class="query-buttons">
+          <button class="btn-outline" data-query="low-gpa">Low GPA CS (first-year)</button>
+          <button class="btn-outline" data-query="high-capacity">MATH 164 ≥ 95% full</button>
+          <button class="btn-outline" data-query="instructor-load">Instructor load</button>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+<script>
+  const form = document.getElementById("search-form");
+  const input = document.getElementById("searchInput");
+  const resultsCard = document.getElementById("results-card");
+  const resultsList = document.getElementById("results-list");
+  const resultsCount = document.getElementById("results-count");
+  const createForm = document.getElementById("create-form");
+  const queryButtons = document.querySelectorAll("[data-query]");
+
+  const API_BASE = "http://127.0.0.1:5000";
+
+  // ==========================
+  // CREATE STUDENT (POST)
+  // Endpoint: POST /api/students
+  // ==========================
+  createForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+
+    const body = {
+      fname: document.getElementById("create-fname").value,
+      lname: document.getElementById("create-lname").value,
+      major: document.getElementById("create-major").value,
+      gpa: document.getElementById("create-gpa").value
+    };
+
+    fetch(API_BASE + "/api/students", {
+      method: "POST", // POST /api/students
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    })
+    .then(res => res.json())
+    .then(data => {
+      alert("Student created with ID: " + data.student_id);
+      createForm.reset();
+    })
+    .catch(err => console.error(err));
+  });
+
+  // ==========================
+  // READ STUDENTS (GET)
+  // Endpoint: GET /api/students?q=QUERY
+  // ==========================
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    const q = input.value.trim();
+    if (!q) {
+      resultsCard.style.display = "none";
+      return;
+    }
+
+    fetch(`${API_BASE}/api/students?q=${encodeURIComponent(q)}`) // GET /api/students?q=
+      .then((res) => res.json())
+      .then((students) => {
+        resultsList.innerHTML = "";
+        students.forEach((s) => {
+          const li = document.createElement("li");
+          li.className = "result-row";
+          li.innerHTML = `
+            <div>
+              <p class="result-name">${s.fname} ${s.lname} <span class="result-id">(${s.student_id})</span></p>
+              <p class="result-meta">Major: ${s.major ?? "N/A"} • GPA: ${s.gpa ?? "N/A"}</p>
+            </div>
+            <div class="crud-buttons">
+              <button class="btn-small edit-btn" data-id="${s.student_id}">Edit</button>
+              <button class="btn-small delete-btn" data-id="${s.student_id}">Delete</button>
+            </div>
+          `;
+          resultsList.appendChild(li);
+        });
+
+        resultsCount.textContent = students.length
+          ? students.length + " result(s) found"
+          : "No results found";
+        resultsCard.style.display = "block";
+      })
+      .catch((err) => {
+        console.error(err);
+        resultsCard.style.display = "none";
+      });
+  });
+
+  // ==========================
+  // UPDATE STUDENT (PUT)
+  // Endpoint: PUT /api/students/{id}
+  // ==========================
+  resultsList.addEventListener("click", (e) => {
+    if (e.target.classList.contains("edit-btn")) {
+      const id = e.target.dataset.id;
+      const newMajor = prompt("Enter new major:");
+      const newGpa = prompt("Enter new GPA:");
+
+      fetch(`${API_BASE}/api/students/${id}`, {
+        method: "PUT", // PUT /api/students/{id}
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ major: newMajor, gpa: newGpa })
+      })
+      .then(res => res.json())
+      .then(() => alert("Student updated successfully!"))
+      .catch(err => console.error(err));
+    }
+  });
+
+  // ==========================
+  // DELETE STUDENT (DELETE)
+  // Endpoint: DELETE /api/students/{id}
+  // ==========================
+  resultsList.addEventListener("click", (e) => {
+    if (e.target.classList.contains("delete-btn")) {
+      const id = e.target.dataset.id;
+      const ok = confirm(`Delete student ${id}?`);
+      if (!ok) return;
+
+      fetch(`${API_BASE}/api/students/${id}`, {
+        method: "DELETE" // DELETE /api/students/{id}
+      })
+      .then(() => {
+        alert("Student deleted.");
+        e.target.closest("li").remove();
+      })
+      .catch(err => console.error(err));
+    }
+  });
+
+  // LOGOUT
+  document.getElementById("logout-btn").addEventListener("click", () => {
+    const confirmLogout = confirm("Are you sure you want to log out?");
+    if (confirmLogout) window.location.href = "LoginPage.html";
+  });
+</script>
+
+</body>
+</html>
